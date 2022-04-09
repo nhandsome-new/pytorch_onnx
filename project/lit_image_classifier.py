@@ -1,109 +1,165 @@
-from argparse import ArgumentParser
+import os
+import numpy as np
 
 import torch
+from torch.utils.data import Dataset, DataLoader
+from torch import nn, optim
+import torchvision
+import torchvision.transforms as T
+from torchvision.datasets import CIFAR10
 import pytorch_lightning as pl
-from torch.nn import functional as F
-from torch.utils.data import DataLoader, random_split
+from pytorch_lightning.callbacks import EarlyStopping, ModelSummary, LearningRateMonitor, ModelCheckpoint
 
-from torchvision.datasets.mnist import MNIST
-from torchvision import transforms
+# ------------
+# INIT GLOBAL
+# ------------
+pl.seed_everything(42)
+
+MODEL_LIST = ['resnet18', 'vgg11_bn', 'efficientnet_b0']
+
+DATASET_PATH = os.environ.get('PATH_DATASETS', 'data/')
+CHECKPOINT_PATH = os.environ.get('PATH_CHECKPOINT', 'saved_models/ConvNets')
+
+BATCH_SIZE = 32
+NUM_WORKERS = 4
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+MODEL_NAME = 'resnet18'
+SAVE_NAME = 'resnet18'
 
 
-class Backbone(torch.nn.Module):
-    def __init__(self, hidden_dim=128):
-        super().__init__()
-        self.l1 = torch.nn.Linear(28 * 28, hidden_dim)
-        self.l2 = torch.nn.Linear(hidden_dim, 10)
+def create_model(model_name):
+    assert model_name in MODEL_LIST
+    if model_name == 'resnet18':
+        trained_model = torchvision.models.resnet18(pretrained=True)
+        in_features = trained_model.fc.in_features
+        trained_model.fc = nn.Linear(in_features, 10, bias=True)
+        return trained_model
 
-    def forward(self, x):
-        x = x.view(x.size(0), -1)
-        x = torch.relu(self.l1(x))
-        x = torch.relu(self.l2(x))
-        return x
+    elif model_name == 'vgg11_bn':
+        trained_model = torchvision.models.resnet18(pretrained=True)
+        in_features = trained_model.classifier[0].in_features
+        trained_model.classifier = nn.Sequential(
+            nn.Linear(in_features, 200, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5, inplace=False),
+            nn.Linear(200, 100, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5, inplace=False),
+            nn.Linear(100, 10, bias=True),
+        )
+        return trained_model
+
+    elif model_name == 'efficientnet_b0':
+        trained_model = torchvision.models.resnet18(pretrained=True)
+        in_features = trained_model.classifier[1].in_features
+        trained_model.fc = nn.Linear(in_features, 10, bias=True)
+        return trained_model
+
+# Create CIFAR10Classifier
 
 
-class LitClassifier(pl.LightningModule):
-    def __init__(self, backbone, learning_rate=1e-3):
+class CIFAR10Classifier(pl.LightningModule):
+    def __init__(self, model_name, optimizer_hparams):
         super().__init__()
         self.save_hyperparameters()
-        self.backbone = backbone
+        self.model = create_model(model_name)
+        self.loss_fn = nn.CrossEntropyLoss()
 
     def forward(self, x):
-        # use forward for inference/predictions
-        embedding = self.backbone(x)
-        return embedding
+        return self.model(x)
+
+    def configure_optimizers(self):
+        optimizer = optim.Adam(self.parameters(), **self.hparams.optimizer_hparams)
+        return optimizer
+
+    def _calculate_loss(self, batch, mode='train'):
+        x, y = batch
+        y_hat = self.forward(x)
+        loss = self.loss_fn(y_hat, y)
+        acc = ((y_hat.argmax(dim=-1)) == y).float().mean()
+
+        self.log(f'{mode}_loss', loss)
+        self.log(f'{mode}_acc', acc)
+        return loss
 
     def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self.backbone(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('train_loss', loss, on_epoch=True)
+        loss = self._calculate_loss(batch)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self.backbone(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('valid_loss', loss, on_step=True)
+        self._calculate_loss(batch)
 
-    def test_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self.backbone(x)
-        loss = F.cross_entropy(y_hat, y)
-        self.log('test_loss', loss)
 
-    def configure_optimizers(self):
-        # self.hparams available because we called self.save_hyperparameters()
-        return torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+def train_model(model_name, save_name, trainer, train_loader, val_loader, **kargs):
+    # Check whetere pretrained model exist
+    pretrained_filename = os.path.join(CHECKPOINT_PATH, save_name + '.ckpt')
+    # If yes, load it
+    if os.path.isfile(pretrained_filename):
+        print(f'Load pretrained model : {pretrained_filename}')
+        model = CIFAR10Classifier.load_from_checkpoint(pretrained_filename)
+    # else train it
+    else:
+        model = CIFAR10Classifier(model_name=model_name, **kargs)
+        trainer.fit(model, train_loader, val_loader)
+        # Load best model after training
+        model = CIFAR10Classifier.load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
 
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
-        return parser
+    return model
 
 
 def cli_main():
-    pl.seed_everything(1234)
+    # ------------
+    # data : transform / dataset / dataloader
+    # ------------
+    os.makedirs(CHECKPOINT_PATH, exist_ok=True)
+
+    # Download dataset and get DATA_MEANS and DATA_STD
+    dataset = CIFAR10(DATASET_PATH, train=True, download=True)
+    data_mean = (dataset.data / 255.0).mean(axis=(0, 1, 2))
+    data_std = (dataset.data / 255.0).std(axis=(0, 1, 2))
+
+    # Create transform
+    train_transform = T.Compose([
+        T.RandomResizedCrop((32, 32)),
+        T.ToTensor(),
+        T.Normalize(data_mean, data_std)
+    ])
+    test_transform = T.Compose([
+        T.ToTensor(),
+        T.Normalize(data_mean, data_std)
+    ])
+
+    # Create dataset / dataloader
+    train_dataset = CIFAR10(DATASET_PATH, train=True, download=True, transform=train_transform)
+    val_dataset = CIFAR10(DATASET_PATH, train=True, download=True, transform=test_transform)
+
+    train_set, _ = torch.utils.data.random_split(train_dataset, [45000, 5000])
+    _, val_set = torch.utils.data.random_split(val_dataset, [45000, 5000])
+
+    train_loader = DataLoader(train_set, batch_size=BATCH_SIZE,
+                              shuffle=True, drop_last=True, num_workers=NUM_WORKERS, pin_memory=True)
+    val_loader = DataLoader(val_set, batch_size=BATCH_SIZE,
+                            num_workers=NUM_WORKERS, pin_memory=True)
 
     # ------------
-    # args
+    # train : trainer / train model
     # ------------
-    parser = ArgumentParser()
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--hidden_dim', type=int, default=128)
-    parser = pl.Trainer.add_argparse_args(parser)
-    parser = LitClassifier.add_model_specific_args(parser)
-    args = parser.parse_args()
 
-    # ------------
-    # data
-    # ------------
-    dataset = MNIST('', train=True, download=True, transform=transforms.ToTensor())
-    mnist_test = MNIST('', train=False, download=True, transform=transforms.ToTensor())
-    mnist_train, mnist_val = random_split(dataset, [55000, 5000])
+    TRAINER = pl.Trainer(
+        default_root_dir=os.path.join(CHECKPOINT_PATH, SAVE_NAME),
+        gpus=1 if DEVICE == 'cuda' else None,
+        max_epochs=5,
+        callbacks=[
+            ModelCheckpoint(save_weights_only=True, mode='max', monitor='val_acc'),
+            LearningRateMonitor('epoch'),
+            EarlyStopping(monitor='val_acc', mode='max', patience=2),
+            ModelSummary(),
+        ]
+    )
 
-    train_loader = DataLoader(mnist_train, batch_size=args.batch_size)
-    val_loader = DataLoader(mnist_val, batch_size=args.batch_size)
-    test_loader = DataLoader(mnist_test, batch_size=args.batch_size)
-
-    # ------------
-    # model
-    # ------------
-    model = LitClassifier(Backbone(hidden_dim=args.hidden_dim), args.learning_rate)
-
-    # ------------
-    # training
-    # ------------
-    trainer = pl.Trainer.from_argparse_args(args)
-    trainer.fit(model, train_loader, val_loader)
-
-    # ------------
-    # testing
-    # ------------
-    result = trainer.test(test_dataloaders=test_loader)
-    print(result)
-
+    train_model(MODEL_NAME, SAVE_NAME, TRAINER, train_loader, val_loader,
+                optimizer_hparams={"lr": 0.001, "weight_decay": 1e-4})
 
 if __name__ == '__main__':
     cli_main()

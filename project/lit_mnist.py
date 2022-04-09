@@ -47,7 +47,7 @@ class LitClassifier(pl.LightningModule):
         return torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
 
 
-def cli_main(result_dir='./RESULT', save_name='RESULT/MNIST', max_epochs=2, batch_size=16, num_workers=8, **model_kwargs):
+def cli_main(result_dir='./MNIST', save_name='RESULT/MNIST', max_epochs=2, batch_size=16, num_workers=8, **model_kwargs):
     pl.seed_everything(1234)
 
     # ------------
@@ -67,7 +67,7 @@ def cli_main(result_dir='./RESULT', save_name='RESULT/MNIST', max_epochs=2, batc
     model = LitClassifier(**model_kwargs)
 
     # ------------
-    # training
+    # trainingd
     # ------------
     trainer = pl.Trainer(
         default_root_dir=os.path.join(result_dir, save_name),

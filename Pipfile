@@ -10,6 +10,11 @@ torchvision = ">=0.6.0"
 project = {editable = true, path = "."}
 
 [dev-packages]
+matplotlib = "*"
+jupyter = "*"
+jupyterthemes = "*"
+jupyter-contrib-nbextensions = "*"
+autopep8 = "*"
 
 [requires]
 python_version = "3.9"
