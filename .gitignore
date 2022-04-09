@@ -128,3 +128,6 @@ lightning_logs/
 MNIST
 RESULT
 .DS_Store
+
+# jupyter notebook
+*.ipynb

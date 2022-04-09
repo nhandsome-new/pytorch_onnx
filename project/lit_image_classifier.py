@@ -1,5 +1,5 @@
 import os
-import numpy as np
+import argparse
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -24,10 +24,6 @@ BATCH_SIZE = 32
 NUM_WORKERS = 4
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-MODEL_NAME = 'resnet18'
-SAVE_NAME = 'resnet18'
-
-
 def create_model(model_name):
     assert model_name in MODEL_LIST
     if model_name == 'resnet18':
@@ -37,7 +33,7 @@ def create_model(model_name):
         return trained_model
 
     elif model_name == 'vgg11_bn':
-        trained_model = torchvision.models.resnet18(pretrained=True)
+        trained_model = torchvision.models.vgg11_bn(pretrained=True)
         in_features = trained_model.classifier[0].in_features
         trained_model.classifier = nn.Sequential(
             nn.Linear(in_features, 200, bias=True),
@@ -51,7 +47,7 @@ def create_model(model_name):
         return trained_model
 
     elif model_name == 'efficientnet_b0':
-        trained_model = torchvision.models.resnet18(pretrained=True)
+        trained_model = torchvision.models.efficientnet_b0(pretrained=True)
         in_features = trained_model.classifier[1].in_features
         trained_model.fc = nn.Linear(in_features, 10, bias=True)
         return trained_model
@@ -84,11 +80,11 @@ class CIFAR10Classifier(pl.LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        loss = self._calculate_loss(batch)
+        loss = self._calculate_loss(batch, mode='train')
         return loss
 
     def validation_step(self, batch, batch_idx):
-        self._calculate_loss(batch)
+        self._calculate_loss(batch, mode='val')
 
 
 def train_model(model_name, save_name, trainer, train_loader, val_loader, **kargs):
@@ -108,10 +104,14 @@ def train_model(model_name, save_name, trainer, train_loader, val_loader, **karg
     return model
 
 
-def cli_main():
+def cli_main(args):
     # ------------
     # data : transform / dataset / dataloader
     # ------------
+    model_name = args.model
+    if args.save is None:
+        save_name = model_name
+    print(model_name)
     os.makedirs(CHECKPOINT_PATH, exist_ok=True)
 
     # Download dataset and get DATA_MEANS and DATA_STD
@@ -147,7 +147,7 @@ def cli_main():
     # ------------
 
     TRAINER = pl.Trainer(
-        default_root_dir=os.path.join(CHECKPOINT_PATH, SAVE_NAME),
+        default_root_dir=os.path.join(CHECKPOINT_PATH, save_name),
         gpus=1 if DEVICE == 'cuda' else None,
         max_epochs=5,
         callbacks=[
@@ -158,8 +158,13 @@ def cli_main():
         ]
     )
 
-    train_model(MODEL_NAME, SAVE_NAME, TRAINER, train_loader, val_loader,
+    train_model(model_name, save_name, TRAINER, train_loader, val_loader,
                 optimizer_hparams={"lr": 0.001, "weight_decay": 1e-4})
 
 if __name__ == '__main__':
-    cli_main()
+    parser = argparse.ArgumentParser(description="モデル選択：['resnet18', 'vgg11_bn', 'efficientnet_b0']")
+    parser.add_argument('-m', '--model', default='resnet18', type=str, choices=['resnet18', 'vgg11_bn', 'efficientnet_b0'])
+    parser.add_argument('-s', '--save', default=None, type=str)
+    args = parser.parse_args()
+    
+    cli_main(args)
