@@ -8,6 +8,8 @@ pytorch-lightning = ">=1.0.0rc2"
 torch = ">=1.3.0"
 torchvision = ">=0.6.0"
 project = {editable = true, path = "."}
+datasets = "*"
+transformers = "*"
 
 [dev-packages]
 matplotlib = "*"
@@ -15,6 +17,8 @@ jupyter = "*"
 jupyterthemes = "*"
 jupyter-contrib-nbextensions = "*"
 autopep8 = "*"
+scipy = "*"
+scikit-learn = "*"
 
 [requires]
 python_version = "3.9"

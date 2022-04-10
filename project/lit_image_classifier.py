@@ -26,6 +26,9 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 def create_model(model_name):
     assert model_name in MODEL_LIST
+    print('-'*40)
+    print(f'Create Model')
+    print('-'*40)
     if model_name == 'resnet18':
         trained_model = torchvision.models.resnet18(pretrained=True)
         in_features = trained_model.fc.in_features
@@ -115,6 +118,9 @@ def cli_main(args):
     os.makedirs(CHECKPOINT_PATH, exist_ok=True)
 
     # Download dataset and get DATA_MEANS and DATA_STD
+    print('-'*40)
+    print(f'Dataset Download: {DATASET_PATH}')
+    print('-'*40)
     dataset = CIFAR10(DATASET_PATH, train=True, download=True)
     data_mean = (dataset.data / 255.0).mean(axis=(0, 1, 2))
     data_std = (dataset.data / 255.0).std(axis=(0, 1, 2))
@@ -155,7 +161,8 @@ def cli_main(args):
             LearningRateMonitor('epoch'),
             EarlyStopping(monitor='val_acc', mode='max', patience=2),
             ModelSummary(),
-        ]
+        ],
+        progress_bar_refresh_rate=1,
     )
 
     train_model(model_name, save_name, TRAINER, train_loader, val_loader,
