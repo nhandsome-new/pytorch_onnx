@@ -15,7 +15,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-# import onnxruntime
+import onnxruntime
 
 AVAIL_GPUS = min(1, torch.cuda.device_count())
 
@@ -239,7 +239,7 @@ class GLUETransformer(LightningModule):
 
 if __name__ == '__main__':
     
-    CHECKPOINT_PATH = os.environ.get('PATH_CHECKPOINT', 'saved_models')
+    CHECKPOINT_PATH = os.environ.get('PATH_CHECKPOINT', 'saved_models/BERT')
     MODEL_NAME = "albert-base-v2"
     TASK_NAME = "sst2"
     
@@ -276,7 +276,7 @@ if __name__ == '__main__':
     
     # Get the Best model
     model = GLUETransformer(
-        model_name_or_path="albert-base-v2",
+        model_name_or_path=MODEL_NAME,
         num_labels=dm.num_labels,
         eval_splits=dm.eval_splits,
         task_name=dm.task_name,
@@ -290,6 +290,6 @@ if __name__ == '__main__':
     print(dm.tokenizer.batch_decode(t_input, skip_special_tokens=True))
 
     print('-'*20, '\nCONVERT TO ONNX\n', '-'*20)
-    save_path = os.join.path(CHECKPOINT_PATH,'sst2_model.onnx')
+    save_path = os.path.join(CHECKPOINT_PATH,'sst2_model.onnx')
     print(f'SAVE INTO : {save_path}"')
     model.to_onnx(save_path, t_input, export_params=True, opset_version=12)
