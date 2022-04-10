@@ -1,4 +1,5 @@
 import os
+from typing import OrderedDict
 
 import numpy as np
 import torch
@@ -156,17 +157,17 @@ class SimpleGAN(pl.LightningModule):
             grid = torchvision.utils.make_grid(sample_imgs)
             self.logger.experiment.add_image('generated_images_1', grid, self.current_epoch)
 
-            # Make ground truth result (REAK : 1)
+            # Make ground truth result (REAL : 1)
             valid = torch.ones(imgs.size(0), 1)
             valid = valid.type_as(imgs)
 
             # Calculate adversarial loss
             g_loss = self.adversarial_loss(self.discriminator(self(z)), valid)
             tqdm_dict = {'g_loss':g_loss}
-            # output = OrderedDict({'loss':g_loss, 'progress_bar':tqdm_dict, 'log':tqdm_dict})
+            output = OrderedDict({'loss':g_loss, 'progress_bar':tqdm_dict, 'log':tqdm_dict})
 
             self.log('g_loss', g_loss, prog_bar=True, on_epoch=True)
-            # return output
+            return output
 
         # Train Discriminator
         if optimizer_idx == 1:
@@ -183,10 +184,10 @@ class SimpleGAN(pl.LightningModule):
             # Discriminator loss is the average of real / fake loss
             d_loss = (real_loss + fake_loss) / 2
             tqdm_dict = {'d_loss': d_loss}
-            # output = OrderedDict({'loss':d_loss, 'progress_bar':tqdm_dict,'log':tqdm_dict})
+            output = OrderedDict({'loss':d_loss, 'progress_bar':tqdm_dict,'log':tqdm_dict})
 
             self.log('d_loss', d_loss, prog_bar=True, on_epoch=True)
-            # return output
+            return output
 
     # 2 Optimizers
     def configure_optimizers(self):
@@ -205,6 +206,7 @@ class SimpleGAN(pl.LightningModule):
 
 if __name__ == '__main__':
     dm = MNISTDataModule(DATASET_PATH, BATCH_SIZE, NUM_WORKERS)
+    dm.setup()
     model = SimpleGAN(*dm.size())
     trainer = pl.Trainer(
         default_root_dir=CHECKPOINT_PATH, 
@@ -223,11 +225,11 @@ if __name__ == '__main__':
     
     # Convert to onnx
     t_batch = next(iter(dm.test_dataloader()))
-    t_input = t_batch['input_ids'][:1]
+    t_input = model.validations_z[:1]
+    print(f'SAMPLE INPUT SIZE: {t_input.shape}')
 
     print('-'*20, '\nCONVERT TO ONNX\n', '-'*20)
-    save_path = os.path.join(CHECKPOINT_PATH,'little_GAN.onnx')
+    save_path = os.path.join('/content/drive/MyDrive/fusic/202204/onnx','little_GAN.onnx')
     print(f'SAVE INTO : {save_path}"')
     model.to_onnx(save_path, t_input, export_params=True, opset_version=12)
-    
-    
+        
