@@ -272,7 +272,6 @@ if __name__ == '__main__':
     )
     
     # Train model
-    TODO:
     trainer.fit(model, datamodule=dm)
     
     # Get the Best model
