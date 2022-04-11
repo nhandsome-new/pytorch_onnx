@@ -160,7 +160,7 @@ class GLUETransformer(LightningModule):
 
     ## onnxへの変換のとき、Error発生しないよう、input形式変換した
     def forward(self, inputs):
-        return self.model(**{'input_ids': inputs})
+        return self.model(**inputs)
 
     def training_step(self, batch, batch_idx):
         outputs = self.model(**batch)
@@ -272,6 +272,7 @@ if __name__ == '__main__':
     )
     
     # Train model
+    TODO:
     trainer.fit(model, datamodule=dm)
     
     # Get the Best model
@@ -284,12 +285,12 @@ if __name__ == '__main__':
     
     
     # Convert to onnx
-    t_batch = next(iter(dm.test_dataloader()))
-    t_input = t_batch['input_ids'][:1]
+    text = 'Sample input text for converting the model into ONNX'
+    t_input = dm.tokenizer.encode_plus('test input message', max_length=128, padding='max_length', return_tensors='pt')
     print('-'*20, '\nINPUT TEXT\n', '-'*20)
-    print(dm.tokenizer.batch_decode(t_input, skip_special_tokens=True))
+    print(text)
 
     print('-'*20, '\nCONVERT TO ONNX\n', '-'*20)
     save_path = os.path.join(CHECKPOINT_PATH,'sst2_model.onnx')
     print(f'SAVE INTO : {save_path}"')
-    model.to_onnx(save_path, t_input, export_params=True, opset_version=12)
+    model.to_onnx(save_path, dict(t_input), export_params=True, opset_version=12)

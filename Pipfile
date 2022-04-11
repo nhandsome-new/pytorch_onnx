@@ -10,6 +10,8 @@ torchvision = ">=0.6.0"
 project = {editable = true, path = "."}
 datasets = "*"
 transformers = "*"
+scipy = "*"
+sklearn = "*"
 
 [dev-packages]
 matplotlib = "*"
