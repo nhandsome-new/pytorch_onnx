@@ -137,6 +137,7 @@ class GLUETransformer(LightningModule):
         model_name_or_path: str,
         num_labels: int,
         task_name: str,
+        input_names: list,
         learning_rate: float = 2e-5,
         adam_epsilon: float = 1e-8,
         warmup_steps: int = 0,
@@ -158,7 +159,7 @@ class GLUETransformer(LightningModule):
 
     ## onnxへの変換のとき、Error発生しないよう、input形式変換した
     def forward(self, input_list):
-        input_dict = dict(zip(INPUT_NAMES, input_list))
+        input_dict = dict(zip(self.hparams.input_names, input_list))
         return self.model(**input_dict)
 
     def training_step(self, batch, batch_idx):
@@ -251,6 +252,7 @@ if __name__ == '__main__':
     # Create bert model for emotion recognition task (sst2)
     model = GLUETransformer(
         model_name_or_path=MODEL_NAME,
+        input_names=INPUT_NAMES,
         num_labels=dm.num_labels,
         eval_splits=dm.eval_splits,
         task_name=dm.task_name,
