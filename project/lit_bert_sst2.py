@@ -20,8 +20,6 @@ import onnxruntime
 AVAIL_GPUS = min(1, torch.cuda.device_count())
 
 # datamodule
-
-
 class GLUEDataModule(LightningDataModule):
 
     task_text_field_map = {
@@ -159,8 +157,9 @@ class GLUETransformer(LightningModule):
         )
 
     ## onnxへの変換のとき、Error発生しないよう、input形式変換した
-    def forward(self, inputs):
-        return self.model(**inputs)
+    def forward(self, input_list):
+        input_dict = dict(zip(INPUT_NAMES, input_list))
+        return self.model(**input_dict)
 
     def training_step(self, batch, batch_idx):
         outputs = self.model(**batch)
@@ -238,10 +237,10 @@ class GLUETransformer(LightningModule):
         return [optimizer], [scheduler]
 
 if __name__ == '__main__':
-    
     CHECKPOINT_PATH = os.environ.get('PATH_CHECKPOINT', 'saved_models/BERT')
     MODEL_NAME = "albert-base-v2"
     TASK_NAME = "sst2"
+    INPUT_NAMES = ['input_ids', 'token_type_ids', 'attention_mask']
     
     seed_everything(42)
     
@@ -273,7 +272,7 @@ if __name__ == '__main__':
     
     # Train model
     trainer.fit(model, datamodule=dm)
-    
+
     # Get the Best model
     model = GLUETransformer(
         model_name_or_path=MODEL_NAME,
@@ -282,14 +281,17 @@ if __name__ == '__main__':
         task_name=dm.task_name,
     ).load_from_checkpoint(trainer.checkpoint_callback.best_model_path)
     
-    
-    # Convert to onnx
+    # Encode input text to tokenized features
     text = 'Sample input text for converting the model into ONNX'
     t_input = dm.tokenizer.encode_plus('test input message', max_length=128, padding='max_length', return_tensors='pt')
     print('-'*20, '\nINPUT TEXT\n', '-'*20)
     print(text)
 
+    # Split the input text(DICTIONARY) info into vectors(LIST) using INPUT_NAMES
+    input_list = [t_input[input_name] for input_name in INPUT_NAMES]
+    
+    # Convert to onnx
     print('-'*20, '\nCONVERT TO ONNX\n', '-'*20)
     save_path = os.path.join(CHECKPOINT_PATH,'sst2_model.onnx')
     print(f'SAVE INTO : {save_path}"')
-    model.to_onnx(save_path, dict(t_input), export_params=True, opset_version=12)
+    model.to_onnx(save_path, input_list, export_params=True, input_names=INPUT_NAMES)
